@@ -35,12 +35,6 @@ project (a lone =smali/= folder, no res/manifest ⇒ no aapt2), then *injects* t
 (stored uncompressed) into a copy of the original =base.apk= — keeping its resources, manifest,
 libs and assets byte-for-byte — strips the void v1 signature, and re-signs with apksigner.
 
-#+begin_quote
-The sibling =aapt2-FEX= flake (=github:OriCat101/aapt2-FEX=) runs the x86_64 aapt2 under FEX and
-is useful if you ever need a /full/ apktool rebuild, but this patch deliberately avoids
-recompiling resources, so it isn't required here.
-#+end_quote
-
 * Usage
 
 #+begin_src sh
