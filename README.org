@@ -1,0 +1,71 @@
+#+title: twint-gms-patcher
+#+options: toc:nil
+
+Removes =ch.twint.payment='s *Google Play services launch gate* so TWINT opens on a
+de-Googled phone (no GMS, no microG). It does *not* add any Google functionality — push
+(FCM) and anything that genuinely needs GMS still won't work. See [[*Caveats][Caveats]].
+
+* What it patches
+
+TWINT's start activity (obfuscated class =en=) closes immediately on a no-GMS phone via two
+checks in =onCreate=, both of which this tool neutralises in smali:
+
+1. *ProviderInstaller pre-check* — =it1.a= is set from
+   =ProviderInstaller.installIfNeeded(ctx)=, which throws
+   =GooglePlayServicesNotAvailableException= without GMS, so =it1.a = 1= and the app shows the
+   Play-services dialog, then finishes.
+   → after =iget vN, …, Lit1;->a:I= we insert =const/4 vN, 0x0=.
+2. *Availability gate* — =GoogleApiAvailability.isGooglePlayServicesAvailable(ctx)= returns
+   non-zero, taking the error/=finish()= branch.
+   → after its =move-result vN= we insert =const/4 vN, 0x0=.
+
+The patcher matches on the *stable GMS signatures* and the structural shape, verifies it hit
+the expected number of sites, and *aborts rather than emit a half-patched APK* if TWINT
+changes. Only app code is touched; bundled GMS library smali (=com/google/…=) is never edited.
+
+A dependency scan found *no client-side Play Integrity / SafetyNet / DroidGuard* — only this
+gate and Firebase Messaging — so there is no local attestation to defeat.
+
+* Build approach (aarch64 / Asahi note)
+
+Google ships no aarch64-linux =aapt2=, and apktool's bundled one is x86_64, so apktool's
+*resource* repack can't run natively here. We don't need it: only =classes4.dex= changed.
+For each edited smali folder the tool assembles *just that one dex* via a minimal apktool
+project (a lone =smali/= folder, no res/manifest ⇒ no aapt2), then *injects* the rebuilt dex
+(stored uncompressed) into a copy of the original =base.apk= — keeping its resources, manifest,
+libs and assets byte-for-byte — strips the void v1 signature, and re-signs with apksigner.
+
+#+begin_quote
+The sibling =aapt2-FEX= flake (=github:OriCat101/aapt2-FEX=) runs the x86_64 aapt2 under FEX and
+is useful if you ever need a /full/ apktool rebuild, but this patch deliberately avoids
+recompiling resources, so it isn't required here.
+#+end_quote
+
+* Usage
+
+#+begin_src sh
+nix develop                     # apktool, apksigner, zip, keytool, adb, cargo on PATH
+cargo run -- pull               # adb-pull base + split APKs into in/   (needs phone via USB)
+cargo run -- all                # decode → patch → build → sign  (stops before install)
+cargo run -- install --install  # DESTRUCTIVE: uninstalls TWINT (wipes data), installs patched set
+#+end_src
+
+Stages can be run individually (=decode=, =patch=, =build=, =sign=). =patch= is idempotent and
+backs up edited smali under =build/backups/=.
+
+* Caveats
+
+- *Data loss:* re-signing means the patched app can't update over the Play-signed one, so
+  =install= uninstalls first → TWINT data is wiped and you must *re-enrol*.
+- *Push / confirmations:* FCM needs GMS/microG; payment-confirmation pushes likely won't
+  arrive. The app may or may not complete a real payment — the backend could also reject a
+  re-signed/non-GMS client. Test with a small payment.
+- *Anti-tamper:* TWINT ships =libtoolChecker.so=/=libsecrets.so=; runtime signature/tamper
+  checks are possible and only show up when running. (RootBeer root detection already passes.)
+- *Updates:* a new TWINT version may shift the smali; the patcher will abort rather than
+  mis-patch — re-run =pull=/=decode=/=patch= and adjust if the gate moved.
+
+* Rollback
+
+Reinstall stock TWINT from Aurora Store (=adb uninstall ch.twint.payment=, then install from
+Aurora). Data is already gone from the =install= step, so it's a clean reinstall.

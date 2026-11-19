@@ -1,0 +1,12 @@
+[package]
+name = "twint-gms-patcher"
+version = "0.1.0"
+edition = "2021"
+description = "Patch ch.twint.payment's Google Play services launch gate so it runs without GMS/microG"
+
+[[bin]]
+name = "twint-gms-patcher"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 1

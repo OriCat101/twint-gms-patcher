@@ -1,0 +1,8 @@
+/in/
+/build/
+/out/
+/target/
+*.apk
+*.jks
+*.keystore
+.direnv/
